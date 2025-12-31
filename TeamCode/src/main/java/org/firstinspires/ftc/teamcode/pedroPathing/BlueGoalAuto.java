@@ -23,8 +23,7 @@ public class BlueGoalAuto extends OpMode {
 
     private Follower follower;
     private DcMotorEx transferMotor, spindexerMotor, intakeMotor, flywheelMotor;
-    private CRServo turretServo;
-    private Servo arcLeftServo, arcRightServo;
+    private Servo arcLeftServo, arcRightServo, turretServo;
     private NormalizedColorSensor spindexerColorSensor, transferColorSensor;    //near intake, near shooter
     private Limelight3A limelight;
     private Timer pathTimer, actionTimer, opmodeTimer;
@@ -55,9 +54,9 @@ public class BlueGoalAuto extends OpMode {
     private double spindexerStartTime = 0;
     private boolean isLaunching=false;
     private boolean isIntaking=false;
-    private boolean spindexerStarted = false;
-    private double flywheelStartTime = 0;
-    private boolean flywheelStarted = false;
+    private boolean launchInProgress = false;
+    private int launchStartTicks = 0;
+
 
     //sorting spindexer variables
     enum ArtifactColor {
@@ -78,8 +77,7 @@ public class BlueGoalAuto extends OpMode {
 
     // Constants
     private final int TICKS_PER_POCKET = 130;
-    private final double SPINDEXER_SORT_POWER = 0.25;
-    private final boolean IS_BLUE_ALLIANCE = true;
+    private int shootStartTicks = 0;
 
     // Color thresholds
     private final double PURPLE_THRESHOLD = 0.001;  //checking blue min (for purple)
@@ -88,7 +86,7 @@ public class BlueGoalAuto extends OpMode {
 
     // declaring poses
     private final Pose startPose = new Pose(28.5, 128, Math.toRadians(145));
-    private final Pose scorePreloadPose = new Pose(47, 90, Math.toRadians(180));
+    private final Pose scorePreloadPose = new Pose(60, 90, Math.toRadians(145));
     private final Pose pickup1InitialPose = new Pose(45, 86, Math.toRadians(180));
 
     private final Pose pickup1FinalPose = new Pose(17, 86, Math.toRadians(180));
@@ -131,7 +129,6 @@ public class BlueGoalAuto extends OpMode {
             if (colors.red > 0.0005 || colors.green > 0.0009 || colors.blue > 0.0009) {
                 spindexerMotor.setPower(spindexerMotorValue);
                 transferMotor.setPower(transferMotorRotatingValue);
-                onSpindexerStartMoving();
             } else {
                 spindexerMotor.setPower(0);
                 transferMotor.setPower(0);
@@ -184,67 +181,84 @@ public class BlueGoalAuto extends OpMode {
         }
     }
 
-    //only record color once intake is off
-    private void updateIntakeSensorSafe() {
-        if (spindexerMoving) return;     // ignore while moving
-        if (artifactCaptured) return;    // prevent double count
+    private enum ShootState {
+        IDLE,
+        ALIGNING,
+        SHOOTING
+    }
+    private ShootState shootState = ShootState.IDLE;
 
-        ArtifactColor detected = detectColor(spindexerColorSensor);
+    private void sortingSpindexer() {
+        if (!isLaunching) return;
 
-        if (detected != ArtifactColor.UNKNOWN) {
-            spindexerQueue.add(detected);
-            artifactCaptured = true;
+        ArtifactColor wanted = desiredOrder.isEmpty() ? ArtifactColor.UNKNOWN : desiredOrder.get(0);
+
+        ArtifactColor transferSeen = detectColor(transferColorSensor);
+        ArtifactColor intakeSeen = detectColor(spindexerColorSensor);
+
+        switch (shootState) {
+
+            case IDLE:
+                shootState = ShootState.ALIGNING;
+                break;
+
+            case ALIGNING:
+                if (transferSeen == wanted && transferSeen != ArtifactColor.UNKNOWN) {
+                    // Correct color is ready → shoot
+                    launchStartTicks = spindexerMotor.getCurrentPosition();
+                    transferMotor.setPower(transferMotorReleaseValue);
+                    spindexerMotor.setPower(spindexerRelease);
+                    shootState = ShootState.SHOOTING;
+                    return;
+                }
+
+                if (intakeSeen == wanted) {
+                    // Desired ball is at intake → rotate clockwise until it reaches transfer
+                    transferMotor.setPower(transferMotorRotatingValue);
+                    spindexerMotor.setPower(-spindexerMotorValue); // rotate clockwise
+                } else {
+                    // Desired ball not at intake → rotate counter-clockwise one pocket
+                    launchStartTicks = spindexerMotor.getCurrentPosition();
+                    transferMotor.setPower(transferMotorRotatingValue); // reverse
+                    spindexerMotor.setPower(spindexerMotorValue);   //rotate counter clockwise
+                    shootState = ShootState.SHOOTING;
+                    return;
+                }
+                break;
+
+            case SHOOTING:
+                int ticksMoved = Math.abs(spindexerMotor.getCurrentPosition() - launchStartTicks);
+                if (ticksMoved >= TICKS_PER_POCKET) {
+                    stopSpindexer();
+
+                    ArtifactColor seenAfter = detectColor(transferColorSensor);
+
+                    // Shot or ready
+                    if (seenAfter == ArtifactColor.UNKNOWN || seenAfter == wanted) {
+                        if (!desiredOrder.isEmpty()) desiredOrder.remove(0);
+                        isLaunching = false;
+                        shootState = ShootState.IDLE;
+                    } else {
+                        // Not the desired color yet → go back to aligning
+                        shootState = ShootState.ALIGNING;
+                    }
+                }
+                break;
         }
     }
 
-    private void onSpindexerStartMoving() {
-        artifactCaptured = false;
+    private boolean shooterHasCorrectColor() {
+        ArtifactColor seen = detectColor(transferColorSensor);
+        return seen != ArtifactColor.UNKNOWN && seen == desiredOrder.get(0);
     }
-
-    private void shootOne() throws InterruptedException {
-        flywheelMotor.setPower(flywheelMotorReleaseClose);
-        transferMotor.setPower(transferMotorReleaseValue);
-        spindexerMotor.setPower(spindexerRelease);
-
-        sleep(400);
-
-        spindexerMotor.setPower(0);
+    private void spinUntilCorrectColor() {
+        transferMotor.setPower(transferMotorRotatingValue);
+        spindexerMotor.setPower(spindexerMotorValue);
+    }
+    private void stopSpindexer() {
         transferMotor.setPower(0);
+        spindexerMotor.setPower(0);
     }
-
-
-    //begins sorting balls before shooting
-    private void sortBeforeShooting() throws InterruptedException{
-        if (desiredOrder.isEmpty() || spindexerQueue.isEmpty()) return;
-
-        // 🔑 GROUND TRUTH CORRECTION
-        ArtifactColor shooterColor = detectColor(transferColorSensor);
-        if (shooterColor != ArtifactColor.UNKNOWN) {
-            spindexerQueue.set(0, shooterColor);
-        }
-
-        ArtifactColor wanted = desiredOrder.get(0);
-        ArtifactColor current = spindexerQueue.get(0);
-
-        // Correct artifact is at shooter
-        if (current == wanted) {
-            shootOne();
-            desiredOrder.remove(0);
-            spindexerQueue.remove(0);
-            return;
-        }
-        // Wrong artifact then rotate spindexer
-        else{
-            transferMotor.setPower(transferMotorRotatingValue);
-            spindexerMotor.setPower(spindexerMotorValue);
-            sleep(700);
-            transferMotor.setPower(0);
-            spindexerMotor.setPower(0);
-            sortBeforeShooting();
-        }
-    }
-
-
 
 
     public void buildPaths() {
@@ -270,36 +284,48 @@ public class BlueGoalAuto extends OpMode {
 
     public void autonomousPathUpdate() throws InterruptedException {
 
-
         switch (pathState) {
-
             case 0: // start flywheel and move along path
                 arcLeftServo.setPosition(arcServoCloseLeft);
                 arcRightServo.setPosition(arcServoCloseRight);
                 flywheelMotor.setPower(flywheelMotorReleaseClose);
-                turretServo.setPower(-0.3);
-                sleep(1500);
+                turretServo.setPosition(0.5); // move turret for 0.5s
+                // start path following
                 follower.followPath(scorePreload);
+                pathTimer.resetTimer();
                 setPathState(1);
                 break;
 
-            case 1: // run spindexer for 4 seconds
-                if (!follower.isBusy()) {
-                    isLaunching=true;
-                    turretServo.setPower(0);
-                    sortBeforeShooting();
+            case 1: // shooting at scorePreload
+                double currentTime = pathTimer.getElapsedTimeSeconds();
+                // start shooting only after follower is done
+                if (!follower.isBusy() && !isLaunching) {
+                    // read AprilTag once
+                    if (limelight.getLatestResult() != null &&
+                            limelight.getLatestResult().isValid() &&
+                            !limelight.getLatestResult().getFiducialResults().isEmpty()) {
+
+                        aprilTagIndex = limelight.getLatestResult()
+                                .getFiducialResults()
+                                .get(0)
+                                .getFiducialId();
+                    }
+
+                    setDesiredOrderFromAprilTag(aprilTagIndex);
+                    flywheelMotor.setPower(flywheelMotorReleaseClose);
+                    pathTimer.resetTimer(); // optional, for next timed actions
+                    isLaunching = true; // start shooting
+                }
+
+                // advance path when shooting is complete
+                if (!isLaunching && !follower.isBusy()) {
                     flywheelMotor.setPower(0);
-                    isLaunching=false;
-                    isIntaking=true;
-                    spindexerMoving=true;
-                    //spindexerMotor.setPower(spindexerMotorValue);
-                    //transferMotor.setPower(transferMotorRotatingValue);
+                    isIntaking = true;
                     intakeMotor.setPower(intakeMotorIntakeValue);
                     follower.followPath(pickupArtifact1Initial);
-                    setPathState(2); // move to pickup path
+                    setPathState(2);
                 }
                 break;
-
             case 2:
                 if(!follower.isBusy()){
                     sleep(500);
@@ -337,6 +363,8 @@ public class BlueGoalAuto extends OpMode {
     public void loop() {
         follower.update();
 
+        sortingSpindexer();
+
         try {
             autonomousPathUpdate();
         } catch (InterruptedException e) {
@@ -350,9 +378,27 @@ public class BlueGoalAuto extends OpMode {
             transferMotor.setPower(0);
         }
 
-        telemetry.addData("path state", pathState);
+        if (limelight.getLatestResult() != null &&
+                limelight.getLatestResult().isValid() &&
+                !limelight.getLatestResult().getFiducialResults().isEmpty()) {
+
+            aprilTagIndex = limelight.getLatestResult()
+                    .getFiducialResults()
+                    .get(0)
+                    .getFiducialId();
+        }
+
+        setDesiredOrderFromAprilTag(aprilTagIndex);
+
+        telemetry.addData("AprilTag ID", aprilTagIndex);
+        ArtifactColor spindexerColor = detectColor(spindexerColorSensor);
+        ArtifactColor transferColor = detectColor(transferColorSensor);
+
+        telemetry.addData("Path State", pathState);
         telemetry.addData("Checking Revolution", checkingRevolution);
         telemetry.addData("RevStartPos", revStartPos);
+        telemetry.addData("Spindexer Sensor Color", spindexerColor);
+        telemetry.addData("Transfer Sensor Color", transferColor);
         telemetry.update();
     }
 
@@ -361,7 +407,6 @@ public class BlueGoalAuto extends OpMode {
         pathTimer = new Timer();
         opmodeTimer = new Timer();
         opmodeTimer.resetTimer();
-        aprilTagIndex = limelight.;
 
         // Motors
         intakeMotor = hardwareMap.get(DcMotorEx.class, "intakeMotor");
@@ -370,7 +415,7 @@ public class BlueGoalAuto extends OpMode {
         flywheelMotor = hardwareMap.get(DcMotorEx.class, "flywheelMotor");
 
         // Servos
-        turretServo = hardwareMap.get(CRServo.class, "turretServo");
+        turretServo = hardwareMap.get(Servo.class, "turretServo");
         arcLeftServo = hardwareMap.get(Servo.class, "arcLeftServo");
         arcRightServo = hardwareMap.get(Servo.class, "arcRightServo");
 
@@ -388,6 +433,10 @@ public class BlueGoalAuto extends OpMode {
 
         flywheelMotor.setMode(DcMotorEx.RunMode.STOP_AND_RESET_ENCODER);
         flywheelMotor.setMode(DcMotorEx.RunMode.RUN_USING_ENCODER);
+
+        //limelight setup
+        limelight.start();
+
 
         follower = Constants.createFollower(hardwareMap);
         buildPaths();

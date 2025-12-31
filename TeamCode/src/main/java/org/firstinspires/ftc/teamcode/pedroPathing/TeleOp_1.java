@@ -27,8 +27,7 @@ public class TeleOp_1 extends OpMode {
 //odometry is i2c bus 0
     //motors
     private DcMotorEx transferMotor, spindexerMotor, intakeMotor, flywheelMotor;
-    private CRServo turretServo;
-    private Servo arcLeftServo, arcRightServo;
+    private Servo arcLeftServo, arcRightServo, turretServo;
     private NormalizedColorSensor spindexerColorSensor, transferColorSensor;
     private Limelight3A limelight;
     public static Pose startingPose;
@@ -51,6 +50,7 @@ public class TeleOp_1 extends OpMode {
     private double arcServoFarLeft = 0.72;    //higher hood, higher arc, higher range
     private double arcServoCloseRight = 0.435;     //lower hood, shorter range, front triangle
     private double arcServoCloseLeft = 0.69;
+    int aprilTagIndex;
 
 
     //button variables
@@ -69,7 +69,7 @@ public class TeleOp_1 extends OpMode {
         intakeMotor = hardwareMap.get(DcMotorEx.class, "intakeMotor");  //2, expansion
         transferMotor = hardwareMap.get(DcMotorEx.class, "transferMotor");  //3, expansion
         spindexerMotor = hardwareMap.get(DcMotorEx.class, "spindexerMotor");    //1, expansion
-        turretServo = hardwareMap.get(CRServo.class, "turretServo");    //0, expansion
+        turretServo = hardwareMap.get(Servo.class, "turretServo");    //0, expansion
         arcLeftServo = hardwareMap.get(Servo.class, "arcLeftServo");    //1, expansion
         arcRightServo = hardwareMap.get(Servo.class, "arcRightServo");  //2, expansion
         flywheelMotor = hardwareMap.get(DcMotorEx.class, "flywheelMotor");  //0, expansion
@@ -138,16 +138,6 @@ public class TeleOp_1 extends OpMode {
                     -gamepad1.right_stick_x * slowModeMultiplier,
                     true // Robot Centric
             );
-        }
-
-        LLResult result = limelight.getLatestResult();
-
-        if (result != null && result.isValid()) {
-
-
-        } else {
-
-            telemetry.addLine("No April Tag Scanned");
         }
 
         //arc hood
@@ -260,22 +250,12 @@ public class TeleOp_1 extends OpMode {
             }
         }
 
-        //530 encoder ticks for a full spindexer revolution
-        //170 encoder ticks to reach next ball storing location, 336 for 2, 520 for 3
-        //testing
-        /*
-        if(gamepad2.aWasPressed()) {
-            isSpindexing = !isSpindexing;
+        //turret movement
+        if(gamepad1.dpad_right){
+            turretServo.setPosition(turretServo.getPosition()+0.05);
+        } else if (gamepad1.dpad_left) {
+            turretServo.setPosition(turretServo.getPosition()-0.05);
         }
-
-        if (isSpindexing) {
-            if (spindexerMotor.getCurrentPosition() % 200 < 35) {
-                spindexerMotor.setPower(0.0005);
-            } else {
-                spindexerMotor.setPower(0.2);
-            }
-        }
-        */
 
         //Determining the amount of red, green, and blue
         telemetry.addData("Red",  colors.red);
@@ -283,6 +263,19 @@ public class TeleOp_1 extends OpMode {
         telemetry.addData("Blue", colors.blue);
         telemetry.addData("LeftServo", arcLeftServo.getPosition());
         telemetry.addData("RightServo", arcRightServo.getPosition());
+
+        //april tag
+        if (limelight.getLatestResult() != null &&
+                limelight.getLatestResult().isValid() &&
+                !limelight.getLatestResult().getFiducialResults().isEmpty()) {
+
+            aprilTagIndex = limelight.getLatestResult()
+                    .getFiducialResults()
+                    .get(0)
+                    .getFiducialId();
+        }
+
+        telemetry.addData("AprilTag ID", aprilTagIndex);
 
         //updating telemetry
         telemetryM.debug("position", follower.getPose());
