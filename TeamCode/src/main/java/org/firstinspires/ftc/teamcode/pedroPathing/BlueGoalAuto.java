@@ -1,6 +1,5 @@
 package org.firstinspires.ftc.teamcode.pedroPathing;
 
-import static java.lang.Thread.sleep;
 
 import com.pedropathing.follower.Follower;
 import com.pedropathing.geometry.BezierLine;
@@ -37,7 +36,7 @@ public class BlueGoalAuto extends OpMode {
     private double transferMotorReleaseValue = 1;
     private double flywheelMotorReleaseFar = -1;
     private double flywheelMotorReleaseClose = -0.2;
-    private double spindexerRelease = 0.25;
+    private double spindexerRelease = 0.4;
 
     private double arcServoFarRight = 0.405;    //higher hood, higher arc, higher range
     private double arcServoFarLeft = 0.72;    //higher hood, higher arc, higher range
@@ -81,13 +80,13 @@ public class BlueGoalAuto extends OpMode {
 
     // Color thresholds
     private final double PURPLE_THRESHOLD = 0.001;  //checking blue min (for purple)
-    private final double GREEN_THRESHOLD = 0.0015;  //checking green min
+    private final double GREEN_THRESHOLD = 0.002;  //checking green min
 
 
     // declaring poses
-    private final Pose startPose = new Pose(28.5, 128, Math.toRadians(145));
-    private final Pose scorePreloadPose = new Pose(60, 90, Math.toRadians(145));
-    private final Pose pickup1InitialPose = new Pose(45, 86, Math.toRadians(180));
+    private final Pose startPose = new Pose(28.5, 128, Math.toRadians(135));
+    private final Pose scorePreloadPose = new Pose(60, 85, Math.toRadians(125));
+    private final Pose pickup1InitialPose = new Pose(55, 86, Math.toRadians(180));
 
     private final Pose pickup1FinalPose = new Pose(17, 86, Math.toRadians(180));
     private final Pose scoreFirstPickUpPose = new Pose(60, 75, Math.toRadians(180));
@@ -181,80 +180,47 @@ public class BlueGoalAuto extends OpMode {
         }
     }
 
-    private enum ShootState {
-        IDLE,
-        ALIGNING,
-        SHOOTING
-    }
-    private ShootState shootState = ShootState.IDLE;
 
     private void sortingSpindexer() {
         if (!isLaunching) return;
+        if(desiredOrder.isEmpty()){
+            isLaunching = false;
+            return;
+        }
 
-        ArtifactColor wanted = desiredOrder.isEmpty() ? ArtifactColor.UNKNOWN : desiredOrder.get(0);
+        ArtifactColor wanted = desiredOrder.get(0);
 
         ArtifactColor transferSeen = detectColor(transferColorSensor);
         ArtifactColor intakeSeen = detectColor(spindexerColorSensor);
 
-        switch (shootState) {
-
-            case IDLE:
-                shootState = ShootState.ALIGNING;
-                break;
-
-            case ALIGNING:
-                if (transferSeen == wanted && transferSeen != ArtifactColor.UNKNOWN) {
-                    // Correct color is ready → shoot
-                    launchStartTicks = spindexerMotor.getCurrentPosition();
-                    transferMotor.setPower(transferMotorReleaseValue);
-                    spindexerMotor.setPower(spindexerRelease);
-                    shootState = ShootState.SHOOTING;
-                    return;
-                }
-
-                if (intakeSeen == wanted) {
-                    // Desired ball is at intake → rotate clockwise until it reaches transfer
-                    transferMotor.setPower(transferMotorRotatingValue);
-                    spindexerMotor.setPower(-spindexerMotorValue); // rotate clockwise
-                } else {
-                    // Desired ball not at intake → rotate counter-clockwise one pocket
-                    launchStartTicks = spindexerMotor.getCurrentPosition();
-                    transferMotor.setPower(transferMotorRotatingValue); // reverse
-                    spindexerMotor.setPower(spindexerMotorValue);   //rotate counter clockwise
-                    shootState = ShootState.SHOOTING;
-                    return;
-                }
-                break;
-
-            case SHOOTING:
-                int ticksMoved = Math.abs(spindexerMotor.getCurrentPosition() - launchStartTicks);
-                if (ticksMoved >= TICKS_PER_POCKET) {
-                    stopSpindexer();
-
-                    ArtifactColor seenAfter = detectColor(transferColorSensor);
-
-                    // Shot or ready
-                    if (seenAfter == ArtifactColor.UNKNOWN || seenAfter == wanted) {
-                        if (!desiredOrder.isEmpty()) desiredOrder.remove(0);
-                        isLaunching = false;
-                        shootState = ShootState.IDLE;
-                    } else {
-                        // Not the desired color yet → go back to aligning
-                        shootState = ShootState.ALIGNING;
-                    }
-                }
-                break;
+        //correct ball is at shooting position
+        if (transferSeen == wanted && transferSeen != ArtifactColor.UNKNOWN) {
+            // Correct color is ready → shoot
+            shootArtifact(transferSeen, wanted);
         }
+        else if (intakeSeen == wanted) {
+            // Desired ball is at intake → rotate clockwise until it reaches transfer
+            transferMotor.setPower(-transferMotorRotatingValue);
+            spindexerMotor.setPower(-spindexerMotorValue); // rotate clockwise
+            shootArtifact(transferSeen, wanted);
+        }
+        else {
+            // Desired ball not at intake → rotate counter-clockwise one pocket
+            transferMotor.setPower(transferMotorRotatingValue); // reverse
+            spindexerMotor.setPower(spindexerMotorValue);   //rotate counter clockwise
+            shootArtifact(transferSeen, wanted);
+        }
+        sortingSpindexer();
     }
 
-    private boolean shooterHasCorrectColor() {
-        ArtifactColor seen = detectColor(transferColorSensor);
-        return seen != ArtifactColor.UNKNOWN && seen == desiredOrder.get(0);
+    private void shootArtifact(ArtifactColor transferSeen, ArtifactColor wanted){
+        // Correct color is ready → shoot
+        launchStartTicks = spindexerMotor.getCurrentPosition();
+        transferMotor.setPower(transferMotorReleaseValue);
+        spindexerMotor.setPower(spindexerRelease);
+        desiredOrder.remove(0);
     }
-    private void spinUntilCorrectColor() {
-        transferMotor.setPower(transferMotorRotatingValue);
-        spindexerMotor.setPower(spindexerMotorValue);
-    }
+
     private void stopSpindexer() {
         transferMotor.setPower(0);
         spindexerMotor.setPower(0);
@@ -282,14 +248,14 @@ public class BlueGoalAuto extends OpMode {
                 .build();
     }
 
-    public void autonomousPathUpdate() throws InterruptedException {
+    public void autonomousPathUpdate() {
 
         switch (pathState) {
             case 0: // start flywheel and move along path
                 arcLeftServo.setPosition(arcServoCloseLeft);
                 arcRightServo.setPosition(arcServoCloseRight);
                 flywheelMotor.setPower(flywheelMotorReleaseClose);
-                turretServo.setPosition(0.5); // move turret for 0.5s
+                turretServo.setPosition(0.85); // move turret to 0.8
                 // start path following
                 follower.followPath(scorePreload);
                 pathTimer.resetTimer();
@@ -297,9 +263,8 @@ public class BlueGoalAuto extends OpMode {
                 break;
 
             case 1: // shooting at scorePreload
-                double currentTime = pathTimer.getElapsedTimeSeconds();
                 // start shooting only after follower is done
-                if (!follower.isBusy() && !isLaunching) {
+                if (!follower.isBusy()) {
                     // read AprilTag once
                     if (limelight.getLatestResult() != null &&
                             limelight.getLatestResult().isValid() &&
@@ -312,30 +277,30 @@ public class BlueGoalAuto extends OpMode {
                     }
 
                     setDesiredOrderFromAprilTag(aprilTagIndex);
-                    flywheelMotor.setPower(flywheelMotorReleaseClose);
-                    pathTimer.resetTimer(); // optional, for next timed actions
-                    isLaunching = true; // start shooting
                 }
 
                 // advance path when shooting is complete
-                if (!isLaunching && !follower.isBusy()) {
-                    flywheelMotor.setPower(0);
-                    isIntaking = true;
-                    intakeMotor.setPower(intakeMotorIntakeValue);
+                if (pathTimer.getElapsedTimeSeconds()>2.5) {
                     follower.followPath(pickupArtifact1Initial);
+                    if(!follower.isBusy()){
+                        isLaunching = true; // start shooting
+                        sortingSpindexer();
+                        sortingSpindexer();
+                    }
                     setPathState(2);
                 }
                 break;
             case 2:
-                if(!follower.isBusy()){
-                    sleep(500);
+                if(pathTimer.getElapsedTimeSeconds()>10 && !isLaunching){
+                    flywheelMotor.setPower(0);
+                    isIntaking=true;
+                    intakeMotor.setPower(intakeMotorIntakeValue);
                     follower.followPath(pickupArtifact1Final, driveMaxPowerIntaking, true);
                     setPathState(3);
                 }
                 break;
             case 3:
                 if(!follower.isBusy()){
-                    sleep(300);
                     intakeMotor.setPower(0);
                     isIntaking=false;
                     follower.followPath(scoreFirstPickUp);
@@ -362,20 +327,10 @@ public class BlueGoalAuto extends OpMode {
     @Override
     public void loop() {
         follower.update();
+        autonomousPathUpdate();
 
-        sortingSpindexer();
-
-        try {
-            autonomousPathUpdate();
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        }
         if (isIntaking) {
             spindexerControls();
-        }
-        else {
-            spindexerMotor.setPower(0);
-            transferMotor.setPower(0);
         }
 
         if (limelight.getLatestResult() != null &&
@@ -387,8 +342,6 @@ public class BlueGoalAuto extends OpMode {
                     .get(0)
                     .getFiducialId();
         }
-
-        setDesiredOrderFromAprilTag(aprilTagIndex);
 
         telemetry.addData("AprilTag ID", aprilTagIndex);
         ArtifactColor spindexerColor = detectColor(spindexerColorSensor);

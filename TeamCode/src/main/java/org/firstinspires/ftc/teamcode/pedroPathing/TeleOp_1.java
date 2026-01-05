@@ -45,6 +45,7 @@ public class TeleOp_1 extends OpMode {
     private double transferMotorReleaseValue = 1;
     private double flywheelMotorReleaseFar = -1;
     private double flywheelMotorReleaseNear = -0.5;
+    private double minimumFlywheelValue = -1700;
 
     private double arcServoFarRight = 0.405;    //higher hood, higher arc, higher range
     private double arcServoFarLeft = 0.72;    //higher hood, higher arc, higher range
@@ -200,20 +201,14 @@ public class TeleOp_1 extends OpMode {
                 transferMotor.setPower(0);
             }
         }
-
-
-        /*
-        if(gamepad1.bWasPressed()){
-            if(spindexerMotor.getPower()==0){
-                spindexerMotor.setPower(spindexerMotorValue);
-                intakeMotor.setPower(intakeMotorRotatingValue);
+        else{
+            if(transferMotor.getVelocity()<minimumFlywheelValue){
+                transferMotor.setPower(transferMotorReleaseValue);
             }
             else{
-                spindexerMotor.setPower(0);
-                intakeMotor.setPower(0);
+                transferMotor.setPower(0);
             }
         }
-        */
 
         //flywheel
         if(topRightBumper1){
@@ -252,17 +247,17 @@ public class TeleOp_1 extends OpMode {
 
         //turret movement
         if(gamepad1.dpad_right){
-            turretServo.setPosition(turretServo.getPosition()+0.05);
+            if(turretServo.getPosition()<0.85){
+                turretServo.setPosition(turretServo.getPosition()+0.01);
+            }
         } else if (gamepad1.dpad_left) {
-            turretServo.setPosition(turretServo.getPosition()-0.05);
+            turretServo.setPosition(turretServo.getPosition()-0.01);
         }
 
         //Determining the amount of red, green, and blue
         telemetry.addData("Red",  colors.red);
         telemetry.addData("Green",  colors.green);
         telemetry.addData("Blue", colors.blue);
-        telemetry.addData("LeftServo", arcLeftServo.getPosition());
-        telemetry.addData("RightServo", arcRightServo.getPosition());
 
         //april tag
         if (limelight.getLatestResult() != null &&
@@ -281,7 +276,11 @@ public class TeleOp_1 extends OpMode {
         telemetryM.debug("position", follower.getPose());
         telemetryM.debug("velocity", follower.getVelocity());
         telemetry.addData("spindexer encoder: ", spindexerMotor.getCurrentPosition());
+        telemetry.addData("flywheel: ", flywheelMotor.getVelocity());
         telemetryM.debug("automatedDrive", automatedDrive);
+        telemetry.addData("LeftServo", arcLeftServo.getPosition());
+        telemetry.addData("RightServo", arcRightServo.getPosition());
+        telemetry.addData("Turret: ", turretServo.getPosition());
 
         /*
         //Automated PathFollowing
