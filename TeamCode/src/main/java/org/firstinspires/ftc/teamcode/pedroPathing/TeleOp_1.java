@@ -43,9 +43,8 @@ public class TeleOp_1 extends OpMode {
     private double intakeMotorIntakeValue = 1;
     private double transferMotorRotatingValue = -0.4;
     private double transferMotorReleaseValue = 1;
-    private double flywheelMotorReleaseFar = -1;
-    private double flywheelMotorReleaseNear = -0.5;
-    private double minimumFlywheelValue = -1700;
+    private double flywheelMotorRelease = -1;
+    private double minimumFlywheelValue = -1850;
 
     private double arcServoFarRight = 0.405;    //higher hood, higher arc, higher range
     private double arcServoFarLeft = 0.72;    //higher hood, higher arc, higher range
@@ -57,7 +56,6 @@ public class TeleOp_1 extends OpMode {
     //button variables
     boolean topRightBumper1Previous = false;
     boolean topLeftBumper1Previous = false;
-    boolean continueSpindexerLoop = false;
     boolean isLaunching = false;
     boolean isIntaking = false;
     boolean isOuttaking = false;
@@ -146,10 +144,14 @@ public class TeleOp_1 extends OpMode {
             if(arcRightServo.getPosition()==arcServoFarRight && arcLeftServo.getPosition() == arcServoFarLeft){    //if at servo position 0, set to low arc position
                 arcLeftServo.setPosition(arcServoCloseLeft);
                 arcRightServo.setPosition(arcServoCloseRight);
+                minimumFlywheelValue = -1600;
+                flywheelMotorRelease = -0.4;
             }
             else{
                 arcLeftServo.setPosition(arcServoFarLeft);
                 arcRightServo.setPosition(arcServoFarRight);
+                minimumFlywheelValue = -1900;
+                flywheelMotorRelease = -1;
             }
         }
 
@@ -201,8 +203,9 @@ public class TeleOp_1 extends OpMode {
                 transferMotor.setPower(0);
             }
         }
+
         else{
-            if(transferMotor.getVelocity()<minimumFlywheelValue){
+            if(flywheelMotor.getVelocity()<minimumFlywheelValue){
                 transferMotor.setPower(transferMotorReleaseValue);
             }
             else{
@@ -213,13 +216,7 @@ public class TeleOp_1 extends OpMode {
         //flywheel
         if(topRightBumper1){
             if(!topRightBumper1Previous){
-                isLaunching = true;
-                if(arcLeftServo.getPosition()==arcServoCloseLeft && arcRightServo.getPosition()==arcServoCloseRight){
-                    flywheelMotor.setPower(flywheelMotorReleaseNear);
-                }
-                else{
-                    flywheelMotor.setPower(flywheelMotorReleaseFar);
-                }
+                flywheelMotor.setPower(flywheelMotorRelease);
                 topRightBumper1Previous = true;
             }
             else{
@@ -234,13 +231,15 @@ public class TeleOp_1 extends OpMode {
         //pushing ball into flywheel
         if(topLeftBumper1){
             if(!topLeftBumper1Previous){
-                transferMotor.setPower(transferMotorReleaseValue);
+               // transferMotor.setPower(transferMotorReleaseValue);
                 spindexerMotor.setPower(spindexerReleaseValue);
+                isLaunching= true;
                 topLeftBumper1Previous = true;
             }
             else{
-                transferMotor.setPower(0);
+              //  transferMotor.setPower(0);
                 spindexerMotor.setPower(0);
+                isLaunching = true;
                 topLeftBumper1Previous = false;
             }
         }

@@ -200,13 +200,11 @@ public class BlueGoalAuto extends OpMode {
         }
         else if (intakeSeen == wanted) {
             // Desired ball is at intake → rotate clockwise until it reaches transfer
-            transferMotor.setPower(-transferMotorRotatingValue);
             spindexerMotor.setPower(-spindexerMotorValue); // rotate clockwise
             shootArtifact(transferSeen, wanted);
         }
         else {
             // Desired ball not at intake → rotate counter-clockwise one pocket
-            transferMotor.setPower(transferMotorRotatingValue); // reverse
             spindexerMotor.setPower(spindexerMotorValue);   //rotate counter clockwise
             shootArtifact(transferSeen, wanted);
         }
