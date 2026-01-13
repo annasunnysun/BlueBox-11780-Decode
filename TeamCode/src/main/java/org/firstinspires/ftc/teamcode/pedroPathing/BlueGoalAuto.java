@@ -1,5 +1,6 @@
 package org.firstinspires.ftc.teamcode.pedroPathing;
 
+import static java.lang.Thread.sleep;
 
 import com.pedropathing.follower.Follower;
 import com.pedropathing.geometry.BezierLine;
@@ -9,7 +10,6 @@ import com.pedropathing.util.Timer;
 import com.qualcomm.hardware.limelightvision.Limelight3A;
 import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
 import com.qualcomm.robotcore.eventloop.opmode.OpMode;
-import com.qualcomm.robotcore.hardware.CRServo;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.NormalizedColorSensor;
 import com.qualcomm.robotcore.hardware.NormalizedRGBA;
@@ -30,18 +30,18 @@ public class BlueGoalAuto extends OpMode {
     private int pathState;
 
     // motor values
-    private double spindexerMotorValue = 0.2;
+    private double spindexerMotorValue = 0.4;
     private double intakeMotorIntakeValue = 1;
-    private double transferMotorRotatingValue = -0.6;
+    private double transferMotorRotatingValue = -0.8;
     private double transferMotorReleaseValue = 1;
     private double flywheelMotorReleaseFar = -1;
-    private double flywheelMotorReleaseClose = -0.2;
-    private double spindexerRelease = 0.4;
+    private double flywheelMotorReleaseClose = -0.6;
+    private double spindexerRelease = 0.25;
 
     private double arcServoFarRight = 0.405;    //higher hood, higher arc, higher range
     private double arcServoFarLeft = 0.72;    //higher hood, higher arc, higher range
-    private double arcServoCloseRight = 0.435;     //lower hood, shorter range, front triangle
-    private double arcServoCloseLeft = 0.69;
+    private double arcServoCloseRight = 0.43;     //lower hood, shorter range, front triangle
+    private double arcServoCloseLeft = 0.695;
     private double driveMaxPowerIntaking = 0.3;
 
 
@@ -85,8 +85,9 @@ public class BlueGoalAuto extends OpMode {
 
     // declaring poses
     private final Pose startPose = new Pose(28.5, 128, Math.toRadians(135));
-    private final Pose scorePreloadPose = new Pose(60, 85, Math.toRadians(125));
-    private final Pose pickup1InitialPose = new Pose(55, 86, Math.toRadians(180));
+    private final Pose readAprilTagPosition = new Pose(60, 100, Math.toRadians(125));
+    private final Pose scorePreloadPosition = new Pose(75, 65, Math.toRadians(160));
+    private final Pose pickup1InitialPose = new Pose(55, 65, Math.toRadians(180));
 
     private final Pose pickup1FinalPose = new Pose(17, 86, Math.toRadians(180));
     private final Pose scoreFirstPickUpPose = new Pose(60, 75, Math.toRadians(180));
@@ -95,7 +96,7 @@ public class BlueGoalAuto extends OpMode {
     private final Pose pickup3InitialPose = new Pose(40, 35, Math.toRadians(180));
     private final Pose pickup3FinalPose = new Pose(30, 30, Math.toRadians(180));
 
-    private PathChain scorePreload, pickupArtifact1Initial, pickupArtifact1Final, scoreFirstPickUp;
+    private PathChain readAprilTag, scorePreload, pickupArtifact1Initial, pickupArtifact1Final, scoreFirstPickUp;
 
     public void setSpindexerRelease() throws InterruptedException {
         if(isLaunching){
@@ -180,10 +181,74 @@ public class BlueGoalAuto extends OpMode {
         }
     }
 
+    private void sortArtifact() throws InterruptedException {
 
-    private void sortingSpindexer() {
-        if (!isLaunching) return;
-        if(desiredOrder.isEmpty()){
+        ArtifactColor firstWanted = desiredOrder.get(0);
+        ArtifactColor secondWanted = desiredOrder.get(1);
+
+        ArtifactColor transferSeen = detectColor(transferColorSensor);
+        ArtifactColor intakeSeen = detectColor(spindexerColorSensor);
+
+        if(transferSeen == firstWanted && intakeSeen == secondWanted){
+            transferMotor.setPower(transferMotorReleaseValue);
+            spindexerMotor.setPower(-spindexerRelease);
+            sleep(3500);
+            transferMotor.setPower(0);
+            spindexerMotor.setPower(0);
+        }
+        else if (transferSeen == firstWanted && intakeSeen != ArtifactColor.UNKNOWN){
+            transferMotor.setPower(transferMotorReleaseValue);
+            spindexerMotor.setPower(spindexerRelease);
+            sleep(3000);
+            spindexerMotor.setPower(0);
+            transferMotor.setPower(0);
+        } else if (transferSeen == secondWanted && intakeSeen == firstWanted) {
+            spindexerMotor.setPower(-spindexerMotorValue);
+            sleep(1000);
+            transferMotor.setPower(transferMotorReleaseValue);
+            spindexerMotor.setPower(-spindexerRelease);
+            sleep(600);
+            spindexerMotor.setPower(spindexerRelease);
+            sleep(2000);
+            transferMotor.setPower(0);
+            spindexerMotor.setPower(0);
+        } else if (transferSeen != ArtifactColor.UNKNOWN && intakeSeen == firstWanted) {
+            spindexerMotor.setPower(-spindexerMotorValue);
+            sleep(500);
+            transferMotor.setPower(transferMotorReleaseValue);
+            sleep(3000);
+            spindexerMotor.setPower(0);
+            transferMotor.setPower(0);
+        } else if (transferSeen != firstWanted && intakeSeen != firstWanted) {
+            transferMotor.setPower(transferMotorRotatingValue);
+            spindexerMotor.setPower(spindexerMotorValue);
+            sleep(400);
+            transferMotor.setPower(transferMotorReleaseValue);
+            spindexerMotor.setPower(spindexerRelease);
+            sleep(2000);
+            transferMotor.setPower(0);
+            spindexerMotor.setPower(0);
+        }
+        else {
+            transferMotor.setPower(transferMotorReleaseValue);
+            spindexerMotor.setPower(spindexerRelease);
+            sleep(3000);
+            transferMotor.setPower(0);
+            spindexerMotor.setPower(0);
+        }
+
+    }
+
+    private void sortingSpindexer() throws InterruptedException {
+        telemetry.update();
+
+        if (desiredOrder.isEmpty()) {
+            isLaunching = false;
+            return;
+        }
+
+        else if(desiredOrder.size() == 1){
+            shootArtifact();
             isLaunching = false;
             return;
         }
@@ -194,46 +259,79 @@ public class BlueGoalAuto extends OpMode {
         ArtifactColor intakeSeen = detectColor(spindexerColorSensor);
 
         //correct ball is at shooting position
-        if (transferSeen == wanted && transferSeen != ArtifactColor.UNKNOWN) {
+        if (transferSeen == wanted) {
             // Correct color is ready → shoot
-            shootArtifact(transferSeen, wanted);
+            shootArtifact();
         }
         else if (intakeSeen == wanted) {
+            transferMotor.setPower(transferMotorRotatingValue);
+            sleep(300);
+            telemetry.addLine("ball shot intake");
+            spindexerMotor.setPower(-spindexerRelease); // rotate clockwise
+            sleep(600);
             // Desired ball is at intake → rotate clockwise until it reaches transfer
-            spindexerMotor.setPower(-spindexerMotorValue); // rotate clockwise
-            shootArtifact(transferSeen, wanted);
+            transferMotor.setPower(-transferMotorRotatingValue);
+            sleep(200);
+            transferMotor.setPower(transferMotorReleaseValue);
+            sleep(700);
+            desiredOrder.remove(0);
+            transferMotor.setPower(0);
+            sleep(200);
+            spindexerMotor.setPower(0);
+        }
+        else if (transferSeen!= ArtifactColor.UNKNOWN || intakeSeen != ArtifactColor.UNKNOWN){
+            spindexerMotor.setPower(spindexerMotorValue);
+            transferMotor.setPower(transferMotorRotatingValue);
+            sleep(300);
+            shootArtifact();
         }
         else {
             // Desired ball not at intake → rotate counter-clockwise one pocket
             spindexerMotor.setPower(spindexerMotorValue);   //rotate counter clockwise
-            shootArtifact(transferSeen, wanted);
+            transferMotor.setPower(transferMotorRotatingValue);
+            sleep(500);
+            spindexerMotor.setPower(0);
+            transferMotor.setPower(0);
+            sortingSpindexer();
         }
-        sortingSpindexer();
+
+        if (desiredOrder.isEmpty()){
+            isLaunching = false;
+        }
+        else {
+            sleep(1500);
+            sortingSpindexer();
+        }
     }
 
-    private void shootArtifact(ArtifactColor transferSeen, ArtifactColor wanted){
+    private void shootArtifact() throws InterruptedException {
         // Correct color is ready → shoot
-        launchStartTicks = spindexerMotor.getCurrentPosition();
+        telemetry.addLine("ball shot");
+        desiredOrder.remove(0);
         transferMotor.setPower(transferMotorReleaseValue);
         spindexerMotor.setPower(spindexerRelease);
-        desiredOrder.remove(0);
-    }
-
-    private void stopSpindexer() {
+        sleep(1000);
         transferMotor.setPower(0);
+        sleep(300);
         spindexerMotor.setPower(0);
+        sleep(700);
     }
 
 
     public void buildPaths() {
+        readAprilTag = follower.pathBuilder()
+                .addPath(new BezierLine(startPose, readAprilTagPosition))
+                .setLinearHeadingInterpolation(startPose.getHeading(), readAprilTagPosition.getHeading())
+                .build();
+
         scorePreload = follower.pathBuilder()
-                .addPath(new BezierLine(startPose, scorePreloadPose))
-                .setLinearHeadingInterpolation(startPose.getHeading(), scorePreloadPose.getHeading())
+                .addPath(new BezierLine(readAprilTagPosition, scorePreloadPosition))
+                .setLinearHeadingInterpolation(readAprilTagPosition.getHeading(), scorePreloadPosition.getHeading())
                 .build();
 
         pickupArtifact1Initial = follower.pathBuilder()
-                .addPath(new BezierLine(scorePreloadPose, pickup1InitialPose))
-                .setLinearHeadingInterpolation(scorePreloadPose.getHeading(), pickup1InitialPose.getHeading())
+                .addPath(new BezierLine(scorePreloadPosition, pickup1InitialPose))
+                .setLinearHeadingInterpolation(scorePreloadPosition.getHeading(), pickup1InitialPose.getHeading())
                 .build();
 
         pickupArtifact1Final = follower.pathBuilder()
@@ -246,17 +344,16 @@ public class BlueGoalAuto extends OpMode {
                 .build();
     }
 
-    public void autonomousPathUpdate() {
+    public void autonomousPathUpdate() throws InterruptedException {
 
         switch (pathState) {
             case 0: // start flywheel and move along path
                 arcLeftServo.setPosition(arcServoCloseLeft);
                 arcRightServo.setPosition(arcServoCloseRight);
                 flywheelMotor.setPower(flywheelMotorReleaseClose);
-                turretServo.setPosition(0.85); // move turret to 0.8
+                turretServo.setPosition(0.95); // move turret to 0.95
                 // start path following
-                follower.followPath(scorePreload);
-                pathTimer.resetTimer();
+                follower.followPath(readAprilTag);
                 setPathState(1);
                 break;
 
@@ -273,32 +370,31 @@ public class BlueGoalAuto extends OpMode {
                                 .get(0)
                                 .getFiducialId();
                     }
-
-                    setDesiredOrderFromAprilTag(aprilTagIndex);
                 }
+                setDesiredOrderFromAprilTag(aprilTagIndex);
 
-                // advance path when shooting is complete
-                if (pathTimer.getElapsedTimeSeconds()>2.5) {
-                    follower.followPath(pickupArtifact1Initial);
-                    if(!follower.isBusy()){
-                        isLaunching = true; // start shooting
-                        sortingSpindexer();
-                        sortingSpindexer();
+                if (pathTimer.getElapsedTimeSeconds()>1.8){
+                    turretServo.setPosition(0.35); // move turret to 0.8
+                    follower.followPath(scorePreload);
+                    if (pathTimer.getElapsedTimeSeconds()>4){
+                        sortArtifact();
                     }
-                    setPathState(2);
                 }
                 break;
             case 2:
-                if(pathTimer.getElapsedTimeSeconds()>10 && !isLaunching){
+                if(pathTimer.getElapsedTimeSeconds()>4.2 && !follower.isBusy()){
                     flywheelMotor.setPower(0);
                     isIntaking=true;
                     intakeMotor.setPower(intakeMotorIntakeValue);
-                    follower.followPath(pickupArtifact1Final, driveMaxPowerIntaking, true);
-                    setPathState(3);
+                    follower.followPath(pickupArtifact1Initial);
+                    if (!follower.isBusy()){
+                        follower.followPath(pickupArtifact1Final, driveMaxPowerIntaking, true);
+                        setPathState(3);
+                    }
                 }
                 break;
             case 3:
-                if(!follower.isBusy()){
+                if(pathTimer.getElapsedTimeSeconds()>13 && !follower.isBusy()){
                     intakeMotor.setPower(0);
                     isIntaking=false;
                     follower.followPath(scoreFirstPickUp);
@@ -309,8 +405,7 @@ public class BlueGoalAuto extends OpMode {
 
             case 4:
                 if(!follower.isBusy()){
-                    transferMotor.setPower(transferMotorReleaseValue);
-                    spindexerMotor.setPower(spindexerMotorValue);
+                    sortingSpindexer();
                 }
                 break;
 
@@ -325,30 +420,25 @@ public class BlueGoalAuto extends OpMode {
     @Override
     public void loop() {
         follower.update();
-        autonomousPathUpdate();
+        try {
+            autonomousPathUpdate();
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
 
         if (isIntaking) {
             spindexerControls();
         }
 
-        if (limelight.getLatestResult() != null &&
-                limelight.getLatestResult().isValid() &&
-                !limelight.getLatestResult().getFiducialResults().isEmpty()) {
-
-            aprilTagIndex = limelight.getLatestResult()
-                    .getFiducialResults()
-                    .get(0)
-                    .getFiducialId();
-        }
-
         telemetry.addData("AprilTag ID", aprilTagIndex);
+        telemetry.addData("Desired List: ", desiredOrder);
         ArtifactColor spindexerColor = detectColor(spindexerColorSensor);
         ArtifactColor transferColor = detectColor(transferColorSensor);
 
         telemetry.addData("Path State", pathState);
         telemetry.addData("Checking Revolution", checkingRevolution);
         telemetry.addData("RevStartPos", revStartPos);
-        telemetry.addData("Spindexer Sensor Color", spindexerColor);
+        telemetry.addData("Intake Sensor Color", spindexerColor);
         telemetry.addData("Transfer Sensor Color", transferColor);
         telemetry.update();
     }

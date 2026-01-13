@@ -8,11 +8,9 @@ import com.pedropathing.geometry.Pose;
 import com.pedropathing.paths.HeadingInterpolator;
 import com.pedropathing.paths.Path;
 import com.pedropathing.paths.PathChain;
-import com.qualcomm.hardware.limelightvision.LLResult;
 import com.qualcomm.hardware.limelightvision.Limelight3A;
 import com.qualcomm.robotcore.eventloop.opmode.OpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
-import com.qualcomm.robotcore.hardware.CRServo;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.NormalizedColorSensor;
 import com.qualcomm.robotcore.hardware.NormalizedRGBA;
@@ -44,7 +42,7 @@ public class TeleOp_1 extends OpMode {
     private double transferMotorRotatingValue = -0.4;
     private double transferMotorReleaseValue = 1;
     private double flywheelMotorRelease = -1;
-    private double minimumFlywheelValue = -1850;
+    private double minimumFlywheelValue = -1800;
 
     private double arcServoFarRight = 0.405;    //higher hood, higher arc, higher range
     private double arcServoFarLeft = 0.72;    //higher hood, higher arc, higher range
@@ -63,7 +61,6 @@ public class TeleOp_1 extends OpMode {
 
     @Override
     public void init() {
-
         //hardware map declarations
         intakeMotor = hardwareMap.get(DcMotorEx.class, "intakeMotor");  //2, expansion
         transferMotor = hardwareMap.get(DcMotorEx.class, "transferMotor");  //3, expansion
@@ -73,7 +70,7 @@ public class TeleOp_1 extends OpMode {
         arcRightServo = hardwareMap.get(Servo.class, "arcRightServo");  //2, expansion
         flywheelMotor = hardwareMap.get(DcMotorEx.class, "flywheelMotor");  //0, expansion
         spindexerColorSensor = hardwareMap.get(NormalizedColorSensor.class, "spindexerColorSensor");    //i2c bus 2
-        spindexerColorSensor = hardwareMap.get(NormalizedColorSensor.class, "transferColorSensor");     //i2c bus 1
+        transferColorSensor = hardwareMap.get(NormalizedColorSensor.class, "transferColorSensor");     //i2c bus 1
         limelight = hardwareMap.get(Limelight3A.class, "limelight");
 
         spindexerMotor.setMode(DcMotorEx.RunMode.STOP_AND_RESET_ENCODER);
@@ -110,7 +107,8 @@ public class TeleOp_1 extends OpMode {
     @Override
     public void loop() {
         //variables
-        NormalizedRGBA colors = spindexerColorSensor.getNormalizedColors();
+        NormalizedRGBA colorsIntake = spindexerColorSensor.getNormalizedColors();
+        NormalizedRGBA colorsTransfer = transferColorSensor.getNormalizedColors();
 
         boolean topRightBumper1 = gamepad1.right_bumper;
         boolean topLeftBumper1 = gamepad1.left_bumper;
@@ -144,13 +142,13 @@ public class TeleOp_1 extends OpMode {
             if(arcRightServo.getPosition()==arcServoFarRight && arcLeftServo.getPosition() == arcServoFarLeft){    //if at servo position 0, set to low arc position
                 arcLeftServo.setPosition(arcServoCloseLeft);
                 arcRightServo.setPosition(arcServoCloseRight);
-                minimumFlywheelValue = -1600;
-                flywheelMotorRelease = -0.4;
+                minimumFlywheelValue = -1400;
+                flywheelMotorRelease = -0.6;
             }
             else{
                 arcLeftServo.setPosition(arcServoFarLeft);
                 arcRightServo.setPosition(arcServoFarRight);
-                minimumFlywheelValue = -1900;
+                minimumFlywheelValue = -1800;
                 flywheelMotorRelease = -1;
             }
         }
@@ -185,7 +183,7 @@ public class TeleOp_1 extends OpMode {
         //collecting spindexer
         if(!isLaunching){
             if (isIntaking) {
-                if(colors.red > 0.0006 || colors.green > 0.0009 || colors.blue > 0.0009) {
+                if(colorsIntake.red > 0.0006 || colorsIntake.green > 0.0009 || colorsIntake.blue > 0.0009) {
                     spindexerMotor.setPower(spindexerMotorValue);
                     transferMotor.setPower(transferMotorRotatingValue);
                 }
@@ -239,14 +237,14 @@ public class TeleOp_1 extends OpMode {
             else{
               //  transferMotor.setPower(0);
                 spindexerMotor.setPower(0);
-                isLaunching = true;
+                isLaunching = false;
                 topLeftBumper1Previous = false;
             }
         }
 
         //turret movement
         if(gamepad1.dpad_right){
-            if(turretServo.getPosition()<0.85){
+            if(turretServo.getPosition()<0.95){
                 turretServo.setPosition(turretServo.getPosition()+0.01);
             }
         } else if (gamepad1.dpad_left) {
@@ -254,22 +252,13 @@ public class TeleOp_1 extends OpMode {
         }
 
         //Determining the amount of red, green, and blue
-        telemetry.addData("Red",  colors.red);
-        telemetry.addData("Green",  colors.green);
-        telemetry.addData("Blue", colors.blue);
+        telemetry.addData("Intake Red",  colorsIntake.red);
+        telemetry.addData("Intake Green",  colorsIntake.green);
+        telemetry.addData("Intake Blue", colorsIntake.blue);
 
-        //april tag
-        if (limelight.getLatestResult() != null &&
-                limelight.getLatestResult().isValid() &&
-                !limelight.getLatestResult().getFiducialResults().isEmpty()) {
-
-            aprilTagIndex = limelight.getLatestResult()
-                    .getFiducialResults()
-                    .get(0)
-                    .getFiducialId();
-        }
-
-        telemetry.addData("AprilTag ID", aprilTagIndex);
+        telemetry.addData("Transfer Red",  colorsTransfer.red);
+        telemetry.addData("Transfer Green",  colorsTransfer.green);
+        telemetry.addData("Transfer Blue", colorsTransfer.blue);
 
         //updating telemetry
         telemetryM.debug("position", follower.getPose());
